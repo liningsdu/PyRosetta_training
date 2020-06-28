@@ -1,0 +1,61 @@
+#Request intereactive session
+qrsh -l mem_free=24G,h_vmem=72G
+
+#Request more than once processor
+#qrsh -pe threaded 8 : will get you eight processors on your target node
+#qrsh -pe threaded 16 : will allocate all the processors on a regular compute node, giving you exclusive use of it
+
+#To load Rosetta
+module avail
+module load rosetta/3.9
+
+# Rosetta website - https://www.rosettacommons.org/
+# RosettaScripts - https://www.rosettacommons.org/docs/latest/scripting_documentation/RosettaScripts/RosettaScripts
+# Also https://www.rosettacommons.org/docs/latest/scripting_documentation/Scripting-Documentation
+
+#Executables
+in the directory /sysapps/cluster/software/Rosetta/3.9/bin
+
+#Rosettascript executable
+/sysapps/cluster/software/Rosetta/3.9/bin/rosetta_scripts.mpi.linuxgccrelease
+/sysapps/cluster/software/Rosetta/3.9/bin/rosetta_scripts.python.linuxgccrelease
+
+#Create an alias for the executable
+alias rosexec="/sysapps/cluster/software/Rosetta/3.9/bin/rosetta_scripts.python.linuxgccrelease"
+
+
+#First script
+#Create a skeleton xml from rosetta. Clean up the file from unnecessary comments
+rosexec > nothing.xml
+
+#execute the script
+rosexec -s ../pdb/1.4gcr_prot.pdb -parser:protocol nothing.xml
+
+#Get help about RosettaScript
+https://www.rosettacommons.org/docs/latest/scripting_documentation/Scripting-Documentation
+https://www.rosettacommons.org/docs/latest/scripting_documentation/RosettaScripts/RosettaScripts
+rosexec -info [function name]
+
+#Create output directory
+mkdir out_4gcr
+
+#Run repack five times
+rosexec -parser:protocol repack_no_design.xml -s ../pdb/4gcr_aligned.pdb -ignore_unrecognized_res -out:path:pdb out_4gcr -out:path:score out_4gcr -nstruct 5
+
+# Run in parallel. Use nstruct + 1 processor. One master processor to distribute the jobs. Other 5 slave processors to run 5 parallel jobs
+mpiexec -np 6 /sysapps/cluster/software/Rosetta/3.9/bin/rosetta_scripts.mpi.linuxgccrelease -parser:protocol repack_no_design.xml -s ../pdb/4gcr_aligned.pdb -ignore_unrecognized_res -out:path:pdb out_4gcr -out:path:score out_4gcr -nstruct 5
+
+# If you run the above command again with option -nstruct 6 rosetta will only create only one more pose
+# If you run the above command again with option -nstruct 1 rosetta will not create any more pose as there are already 5/6 poses
+
+rosexec -parser:protocol repack_no_design.xml -s ../pdb/4gcr_aligned.pdb -ignore_unrecognized_res -out:path:pdb 4gcr -out:path:score 4gcr -nstruct 5
+
+# We want to mutate a residue and calculate the relative change in free energy due to the mutation
+rosexec -s 4gcr/4gcr_aligned_0001.pdb -parser:protocol point_mutation.xml -ex1 -ex2 -out:path:pdb 4gcr -out:path:score 4gcr -out:prefix mut
+
+# We want to mutate residues and calculate the relative change in free energy due to the mutation in a protein-protein interface
+rosexec -s 1c4z/1C4Z_0001.pdb -parser:protocol interface_mutation.xml -ex1 -ex2 -ignore_unrecognized_res -out:path:pdb 1c4z -out:path:score 1c4z -out:prefix inter
+
+# We want to run the above step, but this time mutate all possible mutation in the interface 
+rosexec -s 1c4z/1C4Z_0001.pdb -parser:protocol scan_stabilizing_interface_mutations.xml -ex1 -ex2 -ignore_unrecognized_res -out:path:pdb 1c4z -out:path:score 1c4z -out:prefix scan
+
